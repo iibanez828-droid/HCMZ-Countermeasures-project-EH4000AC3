@@ -1,0 +1,21 @@
+cm_id,order,name,model,owner,target,duration,action,steps
+nose-front,1,Front Nose Cone Additional Weld,EH4000AC-3,Andrew Moobela,2026-12-31,12 h,Scheduling the work to be carried out during PMs.,RHS Front|LHS Front
+nose-rear,2,Rear Nose Cone Additional Weld,EH4000AC-3,Andrew Moobela,2027-10-30,12 h,CSL was shared to customer; scheduling will start.,RHS Rear|LHS Rear
+strut,3,Front Strut Mount Additional Weld,EH4000AC-3,Timothy Chilapala,2026-12-31,10 h,Scheduling the work to be carried out during PMs.,RHS|LHS
+top-plate,4,Frame Top Plate Reinforcement,EH4000AC-3,Gillen Mukuka,2027-01-30,12 h,Scheduling the work to be carried out during PMs.,Executed
+trailing-arm,5,Trailing Arm R12 Radius,EH4000AC-3,Andrew Moobela,2026-06-30,4 h,Use machines after PM during backlog repairs. Target 7 trucks per week. KMP work orders opened 1 week before pre-planning meeting.,Executed
+panto-a,6,Panto A-Frame Reinforcement,EH4000AC-3 (S3),Gillen Mukuka,2026-08-30,4 h,Applies to the S3 machines (10 trucks) only. Target 2 trucks per month. Awaiting parts.,Executed
+panto-rear,7,Panto Support Frame Reinforcement (Rear),EH4000AC-3,Andrew Moobela,2026-12-31,4 h,Scheduling the work to be carried out during PMs.,Executed
+panto-front,8,Panto Support Frame Reinforcement (Front),EH4000AC-3,Andrew Moobela,2026-12-31,4 h,Scheduling the work to be carried out during PMs.,Executed
+cross-beam,9,Front Cross Beam R5 Radius,EH4000AC-3,Timothy Chilapala,2026-07-30,1 h,"R5 modification, targeting 7 trucks per week.",Executed
+rhs-fender,10,RHS Fender Repair,EH4000AC-3,Bright Musonda,2026-12-31,12 h,"Taking advantage during 15,000-hour shutdowns or during major component work like struts upgrade and front axle trunnion modifications.",Executed
+mirror,11,LHS Mirror Bracket Upgrade,EH4000AC-3,Bright Musonda,2026-12-31,12 h,Target is to complete 1 truck per week.,Executed
+lhs-fender,12,LHS Fender Countermeasure,EH4000AC-3,Andrew Moobela,2027-03-31,12 h,Work orders created. Target 1 truck per week.,Executed
+brake,13,Single Brake Pedal S/B,EH4000 / EH3500,Andre Du Plooy,2026-08-30,2 h,"Inspection & verification included as a PM task; 10 trucks per week across EH3500AC and EH4000AC. Pedal marked with red paint. Use machines on breakdown, at the fuel farm, in the workshop or on the go-line.",Executed
+deck-nuts,14,Centre Deck Nuts Countermeasure,EH4000AC-3,Andrew Moobela,2026-09-29,2 h,10 trucks per week scheduled. Use machines on breakdown or in the workshop.,Executed
+handrail,15,RHS Handrail Reinforcement,EH4000AC-3,Tada,,,Awaiting service parts.,Executed
+upright-seat,16,LHS Upright Seat Screw,EH4000AC-3,Andrew Moobela,2027-03-31,12 h,"Taking advantage during 15,000-hour shutdowns or during major component work like struts upgrade and front axle trunnion modifications. CSL provided 19 March.",Executed
+frame-seat-rhs,17,Main Frame Bottom Plate Seat Screw (RHS),EH4000AC-3,Andrew Moobela,2027-03-31,3 h,Scheduling plan communicated to the customer. KMP work orders opened every week.,Executed
+frame-seat-lhs,18,Main Frame Bottom Plate Seat Screw (LHS),EH4000AC-3,Andrew Moobela,2027-10-01,8 h,Scheduling plan communicated to the customer. CSL shared to customer on 7/11/2026.,Executed
+ex-arm,19,EX5600-7 Arm Additional Welds,EX5600-7,Tada,2026-10-01,16 h,"Pro-active additional welding before crack development, arm top and bottom positions.",Executed
+ex-boom,20,EX5600-7 Boom Additional Welds,EX5600-7,Tada,2026-10-01,12 h,Pro-active additional welding before crack development.,Executed
