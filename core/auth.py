@@ -93,8 +93,13 @@ def master_account(secrets: Mapping | None) -> User | None:
     return None
 
 
+def normalize_username(username: str) -> str:
+    """«Peter 1» → «peter1», « Marcos1 » → «marcos1» (sin espacios, en minúsculas)."""
+    return re.sub(r"\s+", "", username or "").lower()
+
+
 def authenticate(users: dict[str, User], username: str, password: str, master: User | None = None) -> User | None:
-    username = username.strip().lower()
+    username = normalize_username(username)
     if master and username == master.username:  # el maestro nunca se toma del archivo de usuarios
         return master if check_password(password, master.hash) else None
     user = users.get(username)

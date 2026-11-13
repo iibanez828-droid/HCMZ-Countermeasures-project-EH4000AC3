@@ -20,6 +20,7 @@ def countermeasure_table(p: Project) -> pd.DataFrame:
         "In progress": c.in_progress, "Not started": c.not_started, "N/A": c.na,
         "Fleet % executed": (c.pct * 100).round(1), "Fleet % closed": (c.close_pct * 100).round(1),
         "Status": c.status, "Days to target": c.days_left,
+        "Hours per truck": c.hours, "Trucks pending": c.pending_n, "Remaining hours": c.remaining_h.round(1),
     })
 
 
@@ -38,7 +39,8 @@ def record_table(p: Project) -> pd.DataFrame:
 def truck_table(p: Project) -> pd.DataFrame:
     t = p.trucks
     return pd.DataFrame({"Fleet": t.fleet, "Serial": t.serial, "Model": t.model, "Applicable": t.n,
-                         "Executed": t.executed, "Closed out": t.closed, "% executed": (t.pct * 100).round(1)})
+                         "Executed": t.executed, "Closed out": t.closed, "% executed": (t.pct * 100).round(1),
+                         "Pending countermeasures": t.pending, "Estimated downtime (h)": t.remaining_h.round(1)})
 
 
 def matrix_table(p: Project) -> pd.DataFrame:

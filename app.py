@@ -18,7 +18,8 @@ from core.i18n import translator
 from core.project import build_project
 from storage import StorageError, local_dir, make_store
 from ui import admin, supervisor
-from ui.common import Ctx, fleet_kpis, note, password_form, section, show_flash
+from ui.common import Ctx, fleet_kpis, note, password_form, pdf_download, section, show_flash
+from ui.gantt import gantt_view, truck_view
 from ui.matrix import action_plan_table, matrix_view
 from ui.theme import footer, header, inject_css, sidebar_logo
 
@@ -110,12 +111,17 @@ def public_page() -> None:
             return
         note(t("public_help"))
         fleet_kpis(t, project)
+        section(t("gantt"))
+        gantt_view(project, t, "pub_gantt")
+        section(t("truck_view"))
+        truck_view(project, t, "pub_truck", users, store=store)
         c1, c2 = st.columns([3, 1.3], vertical_alignment="bottom")
         with c1:
             section(t("action_plan"))
-        c2.download_button(t("dl_pdf"), build_executive_pdf(project),
-                           file_name=f"HCM_Countermeasure_Action_Plan_{project.today:%Y%m%d}.pdf",
-                           mime="application/pdf", icon=":material/print:", on_click="ignore", width="stretch")
+        pdf_download(c2, t("dl_pdf"), lambda rid, by: build_executive_pdf(project, rid, by),
+                     f"HCM_Countermeasure_Action_Plan_{project.today:%Y%m%d}.pdf", "pub_plan_pdf",
+                     store=store, user=None, kind="action plan", icon=":material/print:",
+                     printed_by_public=t("public_user"))
         action_plan_table(project, t, "pub_plan")
         section(t("tab_matrix"))
         matrix_view(project, t, "pub_matrix")

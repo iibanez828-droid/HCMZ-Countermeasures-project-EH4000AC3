@@ -57,7 +57,8 @@ def test_public_view_shows_plan_without_login(at):
 def test_admin_sees_all_tabs(at):
     _as(at, "ana")
     assert not at.exception
-    assert [t.label for t in at.tabs] == ["Summary", "Top page", "Progress", "Countermeasures", "Trucks", "Reports", "Settings"]
+    assert [t.label for t in at.tabs] == ["Summary", "Top page", "Progress", "Countermeasures", "Working hours", "Trucks", "Reports",
+                                         "Settings"]
     assert "Past the fleet target" in _md(at)
 
 
@@ -83,3 +84,10 @@ def test_japanese_interface(at):
     _as(at, "ana")
     assert not at.exception
     assert [t.label for t in at.tabs][0] == "概要"
+
+
+def test_admin_edits_working_hours(at):
+    _as(at, "ana")
+    assert not at.exception
+    assert "Working hours" in [t.label for t in at.tabs]
+    assert any("Remaining work" in m.value for m in at.markdown)

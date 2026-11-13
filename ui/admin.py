@@ -6,23 +6,26 @@ from __future__ import annotations
 import re
 from datetime import date
 
+import pandas as pd
 import streamlit as st
 
 from core import config
 from core.events import write_event
+from core.project import fmt_hours
 from core.executive_report import alert_text, build_executive_pdf
 from core.reports import build_excel, status_csv
 from storage.base import StorageError
 from ui import supervisor
-from ui.common import (Ctx, cm_label, esc, fleet_kpis, fmt_ts, note, password_form, safe_write, section,
-                       user_name)
+from ui.common import (PUBLIC_USER, Ctx, cm_label, esc, fleet_kpis, fmt_ts, new_report_id, note, password_form,
+                       pdf_download, safe_write, section, user_name)
+from ui.gantt import forecast_cards
 from ui.matrix import action_plan_table, matrix_view
 
 
 def render(ctx: Ctx) -> None:
     t = ctx.t
-    tabs = st.tabs([t("tab_summary"), t("tab_matrix"), t("tab_progress"), t("tab_cms"), t("tab_trucks"),
-                    t("tab_reports"), t("tab_settings")])
+    tabs = st.tabs([t("tab_summary"), t("tab_matrix"), t("tab_progress"), t("tab_cms"), t("tab_hours"),
+                    t("tab_trucks"), t("tab_reports"), t("tab_settings")])
     with tabs[0]:
         summary(ctx)
     with tabs[1]:
@@ -32,10 +35,13 @@ def render(ctx: Ctx) -> None:
     with tabs[3]:
         countermeasures(ctx)
     with tabs[4]:
-        trucks(ctx)
+        working_hours(ctx)
     with tabs[5]:
-        reports(ctx)
+        trucks(ctx)
     with tabs[6]:
+        reports(ctx)
+        print_register(ctx)
+    with tabs[7]:
         settings(ctx)
 
 
@@ -153,6 +159,79 @@ def countermeasures(ctx: Ctx) -> None:
                 st.rerun()
 
 
+# ─── Horas de trabajo ─────────────────────────────────────────────────────
+def working_hours(ctx: Ctx) -> None:
+    """Horas estimadas por camión de cada contramedida (editables en cualquier momento),
+    capacidad para el pronóstico y parada estimada por camión."""
+    t, p = ctx.t, ctx.project
+    forecast_cards(p, t)
+    section(t("wh_title"))
+    note(esc(t("wh_help")))
+    c = p.cms
+    df = pd.DataFrame({"cm_id": c.cm_id, "no": c.order, "name": c["name"], "hours": c.hours.astype(float),
+                       "pending": c.pending_n, "remaining": c.remaining_h.round(1)})
+    nonce = st.session_state.setdefault("wh_nonce", 0)
+    edited = st.data_editor(
+        df, hide_index=True, width="stretch", num_rows="fixed", key=f"wh_editor_{nonce}",
+        disabled=["no", "name", "pending", "remaining"], height=min(40 + 35 * len(df), 760),
+        column_config={
+            "cm_id": None,
+            "no": st.column_config.NumberColumn(t("col_no"), width="small"),
+            "name": st.column_config.TextColumn(t("countermeasure"), width="large"),
+            "hours": st.column_config.NumberColumn(t("wh_hours"), min_value=0.0, max_value=1000.0, step=0.5,
+                                                   format="%.1f h"),
+            "pending": st.column_config.NumberColumn(t("wh_pending")),
+            "remaining": st.column_config.NumberColumn(t("wh_remaining"), format="%.1f h"),
+        })
+    changes = []
+    for (_, b), (_, a) in zip(df.iterrows(), edited.iterrows()):
+        old = None if pd.isna(b.hours) else float(b.hours)
+        new = None if pd.isna(a.hours) else float(a.hours)
+        if old != new:
+            changes.append((b.cm_id, "" if new is None else f"{fmt_hours(new)} h"))
+    c1, c2 = st.columns([1, 3], vertical_alignment="center")
+    if changes:
+        c2.caption(t("pending_changes", n=len(changes)))
+    if c1.button(t("save"), type="primary", icon=":material/save:", disabled=not changes, key="wh_save"):
+        def write():
+            for cm_id, duration in changes:
+                write_event(ctx.store, "meta", {"cm": cm_id, "values": {"duration": duration}},
+                            ctx.user.username, cm_id)
+        if safe_write(ctx, write, t("wh_saved", n=len(changes))):
+            st.session_state["wh_nonce"] = nonce + 1
+            st.rerun()
+
+    missing = c[c.hours.isna() & (c.pending_n > 0)]["name"].tolist()
+    if missing:
+        st.warning(t("wh_no_estimate", names=", ".join(missing)), icon=":material/warning:")
+
+    section(t("wh_capacity"))
+    s = p.settings
+    with st.form("wh_capacity"):
+        c1, c2 = st.columns(2)
+        hpd = c1.number_input(t("wh_hpd"), 1.0, 24.0, float(s.get("hours_per_day", 12)), 0.5, help=t("wh_hpd_help"))
+        par = c2.number_input(t("wh_parallel"), 1, 50, int(float(s.get("parallel_trucks", config.DEFAULT_SETTINGS["parallel_trucks"]))), 1,
+                              help=t("wh_parallel_help"))
+        if st.form_submit_button(t("save_settings"), type="primary", icon=":material/save:"):
+            values = {"hours_per_day": float(hpd), "parallel_trucks": int(par)}
+            if safe_write(ctx, lambda: write_event(ctx.store, "settings", {"values": values}, ctx.user.username),
+                          t("settings_saved")):
+                st.rerun()
+
+    section(t("wh_downtime_table"))
+    hpd_now = max(float(s.get("hours_per_day", 12) or 12), 1.0)
+    tr = p.trucks[p.trucks.remaining_h > 0].sort_values("remaining_h", ascending=False)
+    if tr.empty:
+        note(esc(t("no_data")))
+        return
+    st.dataframe(pd.DataFrame({"fleet": tr.fleet, "model": tr.model, "pending": tr.pending,
+                               "hours": tr.remaining_h.round(1), "days": (tr.remaining_h / hpd_now).round(1)}),
+                 hide_index=True, width="stretch", height=min(40 + 35 * len(tr), 420),
+                 column_config={"fleet": t("truck"), "model": t("model"), "pending": t("sb_pending"),
+                                "hours": st.column_config.NumberColumn(t("sb_downtime"), format="%.1f h"),
+                                "days": st.column_config.NumberColumn(t("wh_days"), format="%.1f")})
+
+
 # ─── Camiones ─────────────────────────────────────────────────────────────
 def trucks(ctx: Ctx) -> None:
     t, p = ctx.t, ctx.project
@@ -161,7 +240,9 @@ def trucks(ctx: Ctx) -> None:
     st.dataframe(tr.assign(pct=tr.pct * 100), hide_index=True, width="stretch", height=320,
                  column_config={"fleet": t("truck"), "serial": t("serial"), "model": t("model"), "n": t("applicable"),
                                 "executed": t("executed"), "closed": t("closed_out"),
-                                "pct": st.column_config.ProgressColumn(t("fleet_pct"), format="%.0f%%", min_value=0, max_value=100)})
+                                "pct": st.column_config.ProgressColumn(t("fleet_pct"), format="%.0f%%", min_value=0, max_value=100),
+                                "pending": t("sb_pending"),
+                                "remaining_h": st.column_config.NumberColumn(t("sb_downtime"), format="%.1f h")})
     cm_ids = p.cms.cm_id.tolist()
     section(t("add_truck"))
     with st.form("add_truck", clear_on_submit=True):
@@ -204,17 +285,18 @@ def reports(ctx: Ctx) -> None:
     section(t("downloads"))
     c1, c2, c3 = st.columns(3)
     xlsx = build_excel(p)
-    pdf = build_executive_pdf(p)
     c1.download_button(t("dl_excel"), xlsx, f"HCM_Countermeasures_{stamp}.xlsx",
                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", icon=":material/table:",
                        width="stretch", on_click="ignore")
-    c2.download_button(t("dl_pdf"), pdf, f"HCM_Countermeasure_Action_Plan_{stamp}.pdf", "application/pdf",
-                       icon=":material/picture_as_pdf:", width="stretch", on_click="ignore")
+    pdf_download(c2, t("dl_pdf"), lambda rid, by: build_executive_pdf(p, rid, by),
+                 f"HCM_Countermeasure_Action_Plan_{stamp}.pdf", "adm_plan_pdf",
+                 store=ctx.store, user=ctx.user, kind="action plan")
     c3.download_button(t("dl_csv"), status_csv(p), f"HCM_Countermeasure_records_{stamp}.csv", "text/csv",
                        icon=":material/download:", width="stretch", on_click="ignore")
     section(t("publish"))
     note(t("publish_help"))
     if st.button(t("publish_btn"), icon=":material/cloud_upload:"):
+        pdf = build_executive_pdf(p, new_report_id(), f"{ctx.user.name} ({ctx.user.username})")
         try:
             with st.spinner(t("saving")):
                 ctx.store.write(f"reports/{stamp}_HCM_Countermeasures.xlsx", xlsx, f"[app] reporte Excel · por {ctx.user.username}")
@@ -222,6 +304,26 @@ def reports(ctx: Ctx) -> None:
             st.success(t("published", where=f"reports/{stamp}_…"))
         except StorageError as exc:
             st.error(f"{t('save_failed')} {exc}")
+
+
+def print_register(ctx: Ctx) -> None:
+    """Registro de impresión: cada PDF descargado con su ID, quién y cuándo."""
+    t, p = ctx.t, ctx.project
+    section(t("print_register"))
+    note(esc(t("print_register_help")))
+    log = p.log[p.log.kind == "report"]
+    if log.empty:
+        st.caption(t("no_prints"))
+        return
+    tz = p.settings.get("timezone", "UTC")
+    ids = log.change.str.extract(r"ID (\S+)")[0].fillna("")
+    kinds = log.change.str.extract(r"printed (.+?) PDF")[0].fillna("")
+    st.dataframe(pd.DataFrame({
+        "id": ids, "ts": log.ts.map(lambda x: fmt_ts(x, tz)),
+        "user": log.user.map(lambda u: t("public_user") if u == PUBLIC_USER else f"{user_name(ctx, u)} ({u})"),
+        "report": kinds, "fleet": log.fleet}), hide_index=True, width="stretch", height=min(40 + 35 * len(log), 420),
+        column_config={"id": t("report_id"), "ts": t("when"), "user": t("who"), "report": t("report_type"),
+                       "fleet": t("truck")})
 
 
 # ─── Configuración ────────────────────────────────────────────────────────

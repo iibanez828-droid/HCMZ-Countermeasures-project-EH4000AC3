@@ -15,6 +15,7 @@ Tipos:
 - meta     datos del plan de una contramedida (responsable, fecha meta, duración, acción)
 - scope    camiones y contramedidas que el administrador agrega o quita
 - settings configuración general
+- report   registro de impresión: cada PDF descargado (ID del reporte, tipo, camión y usuario)
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ import pandas as pd
 from core import config
 from storage.base import Store
 
-KINDS = ("record", "meta", "scope", "settings")
+KINDS = ("record", "meta", "scope", "settings", "report")
 CATALOG_PATH = "plan/countermeasures.csv"
 BASELINE_PATH = "plan/baseline.csv"
 SETTINGS_PATH = "plan/settings.json"

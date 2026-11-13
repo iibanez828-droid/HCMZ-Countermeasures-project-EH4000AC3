@@ -35,6 +35,8 @@ CM_STATUSES = ("done", "overdue", "due_soon", "on_track", "no_target")
 DEFAULT_SETTINGS = {
     "timezone": "Africa/Lusaka",
     "due_soon_days": 45,   # días calendario antes de la fecha meta para avisar
+    "hours_per_day": 12,   # horas de trabajo por día en un camión (para pasar horas a días)
+    "parallel_trucks": 2,  # camiones que se trabajan al mismo tiempo (para la fecha estimada de término)
 }
 
 ROLES = ("admin", "supervisor")
@@ -59,3 +61,12 @@ STATUS_COLORS = {
     "on_track": "#1565C0",
     "no_target": "#6D4C41",
 }
+BAR_BASE = "#E2E2E2"  # fondo de las barras de avance
+
+
+def progress_color(cm_status: str) -> str:
+    """Color de la barra de avance de una contramedida (reporte PDF y Gantt):
+    verde si está terminada, rojo si está vencida, naranja en los demás casos."""
+    if cm_status in ("done", "overdue"):
+        return STATUS_COLORS[cm_status]
+    return STATUS_COLORS["in_progress"]

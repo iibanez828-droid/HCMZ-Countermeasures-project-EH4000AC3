@@ -55,6 +55,12 @@ def esc(text: object) -> str:
     return html.escape(str(text))
 
 
+def user_name_plain(users: dict[str, User], username: str) -> str:
+    """Nombre completo de un usuario sin sesión (vista pública)."""
+    u = users.get(username)
+    return u.name if u else (username or "—")
+
+
 def user_name(ctx: Ctx, username: str) -> str:
     u = ctx.users.get(username)
     if u:
@@ -159,6 +165,41 @@ def show_flash() -> None:
     msg = st.session_state.pop("flash", None)
     if msg:
         st.toast(msg, icon=":material/check_circle:")
+
+
+# ─── PDF con registro de impresión ────────────────────────────────────────
+PUBLIC_USER = "public"
+
+
+def new_report_id() -> str:
+    """ID único del reporte impreso, p. ej. RPT-20261113-101530-4F2A."""
+    import secrets
+    from datetime import datetime, timezone
+    return f"RPT-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}-{secrets.token_hex(2).upper()}"
+
+
+def _log_print(store: Store, username: str, report_id: str, kind: str, fleet: str, key: str) -> None:
+    """Callback del botón: guarda el registro de impresión y prepara un ID nuevo para la próxima."""
+    from core.events import write_event
+    try:
+        write_event(store, "report", {"report": kind, "report_id": report_id, "fleet": fleet,
+                                      "values": {"report": kind, "report_id": report_id}},
+                    username or PUBLIC_USER, report_id)
+    except StorageError:
+        pass  # la descarga no debe fallar si no se pudo registrar
+    st.session_state[f"rid_{key}"] = new_report_id()
+
+
+def pdf_download(where, label: str, build: Callable[[str, str], bytes], file_name: str, key: str, *,
+                 store: Store, user: User | None, kind: str, fleet: str = "", icon: str = ":material/picture_as_pdf:",
+                 printed_by_public: str = "Public view") -> None:
+    """Botón de descarga de un PDF con ID de reporte. Cada descarga queda en el historial
+    (tipo «report»): ID, tipo de reporte, camión y usuario («public» si no inició sesión)."""
+    rid = st.session_state.setdefault(f"rid_{key}", new_report_id())
+    printed_by = f"{user.name} ({user.username})" if user else printed_by_public
+    where.download_button(label, build(rid, printed_by), file_name=file_name, mime="application/pdf", icon=icon,
+                          width="stretch", key=key, on_click=_log_print,
+                          args=(store, user.username if user else PUBLIC_USER, rid, kind, fleet, key))
 
 
 # ─── Cambio de contraseña propia ──────────────────────────────────────────

@@ -149,3 +149,121 @@ def test_reports_build(store):
     assert build_excel(p)[:2] == b"PK"
     assert build_executive_pdf(p)[:4] == b"%PDF"
     assert status_csv(p).decode("utf-8-sig").startswith("Countermeasure,Fleet")
+
+
+# ─── Gantt ────────────────────────────────────────────────────────────────
+def test_timeline_matches_pdf_colors_and_bounds(store):
+    from core import config
+    from core.project import timeline
+    p = project(store)
+    tl = timeline(p).set_index("cm_id")
+    assert len(tl) == 20
+    assert tl.loc["trailing-arm", "color"] == config.STATUS_COLORS["done"]      # 100 % → verde
+    assert tl.loc["panto-a", "color"] == config.STATUS_COLORS["overdue"]        # vencida → rojo
+    assert tl.loc["nose-front", "color"] == config.STATUS_COLORS["in_progress"]  # en curso → naranja
+    assert (tl.start < tl.end).all() and (tl.fill_end >= tl.start).all() and (tl.fill_end <= tl.end).all()
+    assert not tl.loc["handrail", "has_target"]
+
+
+def test_truck_timeline_and_scoreboard(store):
+    from core import config
+    from core.project import record_bar_status, truck_scoreboard, truck_timeline
+    assert record_bar_status("closed", None, TODAY) == "done"
+    assert record_bar_status("in_progress", date(2026, 1, 1), TODAY) == "overdue"
+    assert record_bar_status("not_started", date(2027, 1, 1), TODAY) == "in_progress"
+    write_event(store, "record", {"cm": "handrail", "fleet": "RD168", "values": {"planned_date": "2026-12-01"}}, "sam", "x")
+    p = project(store)
+    tl = truck_timeline(p, "RD168")
+    recs = p.truck_records("RD168")
+    assert len(tl) == int((recs.status != "na").sum())                       # sin N/A
+    row = tl.set_index("cm_id").loc["trailing-arm"]
+    assert row.color == config.STATUS_COLORS["done"] and row.fill_end <= row.end
+    s = truck_scoreboard(p, "RD168")
+    assert s["executed"] + s["pending"] == s["n"]
+    assert s["next_date"] == date(2026, 12, 1) and s["last_user"] == "sam"
+
+
+# ─── Horas de trabajo ─────────────────────────────────────────────────────
+def test_parse_and_remaining_hours():
+    from core.project import parse_hours, remaining_hours
+    assert parse_hours("12 h") == 12 and parse_hours("2,5 hrs") == 2.5 and parse_hours("") is None
+    assert remaining_hours({"steps": [False, False]}, 12) == 12
+    assert remaining_hours({"steps": [True, False]}, 12) == 6          # RHS hecho, LHS pendiente
+    assert remaining_hours({"steps": [True, True]}, 12) == 0           # ejecutado
+    assert remaining_hours({"steps": [False], "na": True}, 12) == 0    # N/A
+    assert remaining_hours({"steps": [False]}, None) == 0              # sin estimación
+
+
+def test_hours_update_with_meta_and_status(store):
+    from core.project import forecast, truck_downtime
+    p = project(store)
+    c = p.cm_row("mirror")
+    assert c.hours == 12 and c.remaining_h == pytest.approx(12 * c.pending_n)
+    total = forecast(p)["remaining_h"]
+    assert total == pytest.approx(p.cms.remaining_h.sum())
+    # El administrador cambia las horas → todo se recalcula
+    write_event(store, "meta", {"cm": "mirror", "values": {"duration": "20 h"}}, "ana", "mirror")
+    p2 = project(store)
+    assert p2.cm_row("mirror").remaining_h == pytest.approx(20 * c.pending_n)
+    assert forecast(p2)["remaining_h"] == pytest.approx(total + 8 * c.pending_n)
+    # Un camión ejecuta la contramedida → sus horas salen del pendiente
+    fleet = p2.cm_records("mirror").query("status not in ['executed', 'closed', 'na']").fleet.iloc[0]
+    before = truck_downtime(p2, fleet)["hours"]
+    write_event(store, "record", {"cm": "mirror", "fleet": fleet, "values": {"steps": [True]}}, "sam", "x")
+    p3 = project(store)
+    assert truck_downtime(p3, fleet)["hours"] == pytest.approx(before - 20)
+    assert p3.cm_row("mirror").remaining_h == pytest.approx(20 * (c.pending_n - 1))
+
+
+def test_forecast_uses_capacity(store):
+    from core.project import forecast
+    write_event(store, "settings", {"values": {"hours_per_day": 10, "parallel_trucks": 2}}, "ana")
+    p = project(store)
+    f = forecast(p)
+    import math
+    assert f["days"] == math.ceil(f["remaining_h"] / 20) and f["finish"] > p.today
+    assert "RHS Handrail Reinforcement" in f["no_estimate"]          # sin duración en el plan
+
+
+def test_pdf_reports_with_gantt(store):
+    import re
+    from core.executive_report import build_truck_pdf
+    p = project(store)
+    plan = build_executive_pdf(p)
+    assert plan[:4] == b"%PDF" and len(re.findall(rb"/Type\s*/Page[^s]", plan)) >= 2   # Gantt + lista
+    truck = build_truck_pdf(p, "RD200")
+    assert truck[:4] == b"%PDF" and len(re.findall(rb"/Type\s*/Page[^s]", truck)) >= 2  # Gantt + detalle
+
+
+def test_completion_assumes_two_trucks_by_default(store):
+    from core.i18n import translator
+    from core.project import forecast, trucks_phrase
+    f = forecast(project(store))
+    assert f["parallel"] == 2                                   # valor por defecto
+    assert trucks_phrase(1) == "one truck" and trucks_phrase(2) == "two trucks"
+    text = translator("en")("fc_finish_sub", trucks=trucks_phrase(2), n="2")
+    assert text == "Based on continuous work on two trucks in parallel, without any delays"
+
+
+# ─── Registro de impresión y nombres de usuario ───────────────────────────
+def test_username_ignores_spaces_and_case():
+    from core.auth import User, authenticate, hash_password, normalize_username
+    users = {"peter1": User("peter1", "Peter", "admin", hash_password("Dummy-pass-9"))}
+    assert normalize_username(" Peter 1 ") == "peter1"
+    assert authenticate(users, "Peter 1", "Dummy-pass-9").username == "peter1"
+    assert authenticate(users, "PETER1", "dummy-pass-9") is None             # la contraseña sí distingue mayúsculas
+
+
+def test_print_register_and_report_id(store):
+    import io
+    from pypdf import PdfReader
+    from core.executive_report import build_truck_pdf
+    write_event(store, "report", {"report": "truck report", "report_id": "RPT-TEST-0001", "fleet": "RD200",
+                                  "values": {"report": "truck report", "report_id": "RPT-TEST-0001"}}, "marcos1", "x")
+    p = project(store)
+    row = p.log.iloc[0]
+    assert row.kind == "report" and row.user == "marcos1" and row.fleet == "RD200"
+    assert "RPT-TEST-0001" in row.change and "truck report" in row.change
+    pdf = build_truck_pdf(p, "RD200", None, "RPT-TEST-0002", "Marcos (marcos1)")
+    text = PdfReader(io.BytesIO(pdf)).pages[0].extract_text()
+    assert "Report ID RPT-TEST-0002" in text and "Printed by Marcos (marcos1)" in text
